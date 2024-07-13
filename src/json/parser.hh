@@ -29,7 +29,7 @@ private:
     Token m_tCurr;
     Token m_tNext;
 
-    void expect(enum Token::TYPE t);
+    void expect(enum Token::TYPE t, std::string_view svFile, int line);
     void next();
     void parseNode(Object* pNode);
     void parseIdent(TagVal* pTV);

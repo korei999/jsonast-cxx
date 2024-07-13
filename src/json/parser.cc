@@ -34,11 +34,12 @@ Parser::parse()
 }
 
 void
-Parser::expect(enum Token::TYPE t)
+Parser::expect(enum Token::TYPE t, std::string_view svFile, int line)
 {
     if (m_tCurr.type != t)
     {
-        CERR("({}): unexpected token\n", m_sName);
+        CERR("('{}', at {}): ({}): unexpected token: expected: '{}', got '{}'\n",
+             svFile, line, m_sName, static_cast<char>(t), static_cast<char>(m_tCurr.type));
         exit(2);
     }
 }
@@ -117,12 +118,12 @@ Parser::parseObject(Object* pNode)
 
     for (; m_tCurr.type != Token::RBRACE; next())
     {
-        expect(Token::IDENT);
+        expect(Token::IDENT, __FILE__, __LINE__);
         aObjs.push_back({.svKey = m_tCurr.svLiteral, .tagVal = {}});
 
         /* skip identifier and ':' */
         next();
-        expect(Token::ASSIGN);
+        expect(Token::ASSIGN, __FILE__, __LINE__);
         next();
 
         parseNode(&aObjs.back());
