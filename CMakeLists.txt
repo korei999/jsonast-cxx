@@ -23,6 +23,7 @@ add_executable(
     "src/main.cc"
     "src/json/lex.cc"
     "src/json/parser.cc"
+    "src/utils.cc"
 )
 
 # target_link_libraries(${CMAKE_PROJECT_NAME} fmt)

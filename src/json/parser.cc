@@ -1,23 +1,30 @@
-#include <print>
-
 #include "parser.hh"
+#include "../utils.hh"
 
 namespace json
 {
 
 Parser::Parser(std::string_view path)
-    : m_sName(path), m_l(path)
 {
+    load(path);
+}
+
+void
+Parser::load(std::string_view path)
+{
+    m_sName = path;
+    m_l.loadFile(path);
+
     m_tCurr = m_l.next();
     m_tNext = m_l.next();
 
     if ((m_tCurr.type != Token::LBRACE) && (m_tCurr.type != Token::LBRACKET))
     {
-        std::print(stderr, "wrong first token\n");
+        CERR("wrong first token\n");
         exit(2);
     }
 
-    m_upHead = std::make_unique<Node>();
+    m_upHead = std::make_unique<Object>();
 }
 
 void
@@ -31,8 +38,7 @@ Parser::expect(enum Token::TYPE t)
 {
     if (m_tCurr.type != t)
     {
-
-        std::print(stderr, "unexpected token\n");
+        CERR("({}): unexpected token\n", m_sName);
         exit(2);
     }
 }
@@ -45,7 +51,7 @@ Parser::next()
 }
 
 void
-Parser::parseNode(Node* pNode)
+Parser::parseNode(Object* pNode)
 {
     switch (m_tCurr.type)
     {
@@ -95,19 +101,19 @@ Parser::parseNumber(TagVal* pTV)
     bool bReal = m_tCurr.svLiteral.find('.') != std::string::npos;
 
     if (bReal)
-        *pTV = {.tag = TAG::FLOAT, .val = std::atof(m_tCurr.svLiteral.data())};
+        *pTV = {.tag = TAG::DOUBLE, .val = std::atof(m_tCurr.svLiteral.data())};
     else
-        *pTV = {.tag = TAG::INT, .val = std::atoll(m_tCurr.svLiteral.data())};
+        *pTV = TagVal{.tag = TAG::LONG, .val = std::atol(m_tCurr.svLiteral.data())};
 
     next();
 }
 
 void
-Parser::parseObject(Node* pNode)
+Parser::parseObject(Object* pNode)
 {
     pNode->tagVal.tag = TAG::OBJECT;
-    pNode->tagVal.val = std::vector<Node>{};
-    auto& aObjs = std::get<std::vector<Node>>(pNode->tagVal.val);
+    pNode->tagVal.val = std::vector<Object>{};
+    auto& aObjs = std::get<std::vector<Object>>(pNode->tagVal.val);
 
     for (; m_tCurr.type != Token::RBRACE; next())
     {
@@ -133,11 +139,11 @@ Parser::parseObject(Node* pNode)
 }
 
 void
-Parser::parseArray(Node* pNode)
+Parser::parseArray(Object* pNode)
 {
     pNode->tagVal.tag = TAG::ARRAY;
-    pNode->tagVal.val = std::vector<TagVal>{};
-    auto& aTVs = std::get<std::vector<TagVal>>(pNode->tagVal.val);
+    pNode->tagVal.val = std::vector<Object>{};
+    auto& aTVs = getArray(pNode);
 
     /* collect each key/value pair inside array */
     for (; m_tCurr.type != Token::RBRACKET; next())
@@ -148,28 +154,25 @@ Parser::parseArray(Node* pNode)
         {
             default:
             case Token::IDENT:
-                parseIdent(&aTVs.back());
+                parseIdent(&aTVs.back().tagVal);
                 break;
 
             case Token::NULL_:
-                parseNull(&aTVs.back());
+                parseNull(&aTVs.back().tagVal);
                 break;
 
             case Token::TRUE:
             case Token::FALSE:
-                parseBool(&aTVs.back());
+                parseBool(&aTVs.back().tagVal);
                 break;
 
             case Token::NUMBER:
-                parseNumber(&aTVs.back());
+                parseNumber(&aTVs.back().tagVal);
                 break;
 
             case Token::LBRACE:
                 next();
-                aTVs.back().tag = TAG::OBJECT;
-                aTVs.back().val = std::vector<Node>(1);
-                auto& obj = std::get<std::vector<Node>>(aTVs.back().val).back();
-                parseObject(&obj);
+                parseObject(&aTVs.back());
                 break;
         }
 
@@ -203,11 +206,11 @@ void
 Parser::print()
 {
     printNode(m_upHead.get(), "");
-    std::print("\n");
+    COUT("\n");
 }
 
 void
-Parser::printNode(Node* pNode, std::string_view svEnd)
+Parser::printNode(Object* pNode, std::string_view svEnd)
 {
     std::string_view key = pNode->svKey;
 
@@ -218,7 +221,7 @@ Parser::printNode(Node* pNode, std::string_view svEnd)
 
         case TAG::OBJECT:
             {
-                auto& obj = std::get<std::vector<Node>>(pNode->tagVal.val);
+                auto& obj = getObject(pNode);
                 std::string q0, q1, objName0, objName1;
 
                 if (key.size() == 0)
@@ -232,19 +235,19 @@ Parser::printNode(Node* pNode, std::string_view svEnd)
                     q1 = q0 = "\"";
                 }
 
-                std::print("{}{}{}{}{{\n", q0, objName0, q1, objName1);
+                COUT("{}{}{}{}{{\n", q0, objName0, q1, objName1);
                 for (size_t i = 0; i < obj.size(); i++)
                 {
                     std::string slE = (i == obj.size() - 1) ? "\n" : ",\n";
                     printNode(&obj[i], slE);
                 }
-                std::print("}}{}", svEnd);
+                COUT("}}{}", svEnd);
             }
             break;
 
         case TAG::ARRAY:
             {
-                auto& arr = std::get<std::vector<TagVal>>(pNode->tagVal.val);
+                auto& arr = getArray(pNode);
                 std::string q0, q1, arrName0, arrName1;
 
                 if (key.size() == 0)
@@ -258,85 +261,85 @@ Parser::printNode(Node* pNode, std::string_view svEnd)
                     q1 = q0 = "\"";
                 }
 
-                std::print("{}{}{}{}[", q0, arrName0, q1, arrName1);
+                COUT("{}{}{}{}[", q0, arrName0, q1, arrName1);
                 for (size_t i = 0; i < arr.size(); i++)
                 {
                     std::string slE = (i == arr.size() - 1) ? "\n" : ",\n";
 
-                    switch (arr[i].tag)
+                    switch (arr[i].tagVal.tag)
                     {
                         default:
                         case TAG::STRING:
                             {
-                                std::string_view sl = std::get<std::string_view>(arr[i].val);
-                                std::print("\"{}\"{}", sl, slE);
+                                std::string_view sl = std::get<std::string_view>(arr[i].tagVal.val);
+                                COUT("\"{}\"{}", sl, slE);
                             }
                             break;
 
                         case TAG::NULL_:
-                                std::print("{}{}", "null", slE);
+                                COUT("{}{}", "null", slE);
                             break;
 
-                        case TAG::INT:
+                        case TAG::LONG:
                             {
-                                long num = std::get<long>(arr[i].val);
-                                std::print("{}{}", num, slE);
+                                long num = std::get<long>(arr[i].tagVal.val);
+                                COUT("{}{}", num, slE);
                             }
                             break;
 
-                        case TAG::FLOAT:
+                        case TAG::DOUBLE:
                             {
-                                double dnum = std::get<double>(arr[i].val);
-                                std::print("{}{}", dnum, slE);
+                                double dnum = std::get<double>(arr[i].tagVal.val);
+                                COUT("{}{}", dnum, slE);
                             }
                             break;
 
                         case TAG::BOOL:
                             {
-                                bool b = std::get<bool>(arr[i].val);
-                                std::print("{}{}", b, slE);
+                                bool b = std::get<bool>(arr[i].tagVal.val);
+                                COUT("{}{}", b, slE);
                             }
                             break;
 
                         case TAG::OBJECT:
-                                printNode(&std::get<std::vector<Node>>(arr[i].val).back(), slE);
+                                printNode(&arr[i], slE);
                             break;
                     }
                 }
-                std::print("]{}", svEnd);
+                COUT("]{}", svEnd);
             }
             break;
 
-        case TAG::FLOAT:
+        case TAG::DOUBLE:
             {
                 /* TODO: add some sort formatting for floats */
                 double f = std::get<double>(pNode->tagVal.val);
-                std::print("\"{}\": {}{}", key, f, svEnd);
+                COUT("\"{}\": {}{}", key, f, svEnd);
             }
             break;
 
-        case TAG::INT:
+        case TAG::LONG:
             {
                 long i = std::get<long>(pNode->tagVal.val);
-                std::print("\"{}\": {}{}", key, i, svEnd);
+                COUT("\"{}\": {}{}", key, i, svEnd);
             }
             break;
 
         case TAG::NULL_:
-                std::print("\"{}\": {}{}", key, "null", svEnd);
+                COUT("\"{}\": {}{}", key, "null", svEnd);
             break;
 
         case TAG::STRING:
             {
                 std::string_view sl = std::get<std::string_view>(pNode->tagVal.val);
-                std::print("\"{}\": \"{}\"{}", key, sl, svEnd);
+                COUT("\"{}\": \"{}\"{}", key, sl, svEnd);
             }
             break;
 
         case TAG::BOOL:
             {
                 bool b = std::get<bool>(pNode->tagVal.val);
-                std::print("\"{}\": {}{}", key, b, svEnd);
+                COUT("\"{}\": {}{}", key, b, svEnd);
             }
             break;
     }

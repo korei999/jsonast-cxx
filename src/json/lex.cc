@@ -1,7 +1,7 @@
-#include <print>
 #include <fstream>
 
 #include "lex.hh"
+#include "../utils.hh"
 
 namespace json
 {
@@ -12,7 +12,7 @@ Lexer::loadFile(std::string_view path)
     std::ifstream file(path.data(), std::ios::in | std::ios::ate | std::ios::binary);
     if (!file.is_open())
     {
-        std::print(stderr, "failed to open '{}'\n", path);
+        CERR("failed to open '{}'\n", path);
         exit(1);
     }
 
@@ -98,11 +98,11 @@ Lexer::string()
                 break;
 
             case Token::EOF_:
-                std::print(stderr, "unterminated string\n");
+                CERR("unterminated string\n");
                 exit(1);
 
             case '\n':
-                std::print(stderr, "Unexpected newline within string");
+                CERR("Unexpected newline within string");
                 exit(1);
 
             case '\\':
